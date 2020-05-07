@@ -20,20 +20,32 @@ const cardsMenu = document.querySelector('.cards-menu'); //меню рестор
 
 let login = localStorage.getItem('gloDelivery'); //получение логина из локального хранилища
 
+//получение данных 
+const getData = async function(url) {
+  const response = await fetch(url);
+
+  if(!response.ok) {
+    throw new Error(`Ошибка по адресу ${url},
+    статус ошибки ${response.status}`);
+  }
+
+  return await response.json();
+};
+
 //переключение окна корзины
 function toggleModal() {
   modal.classList.toggle("is-open");
 }
 
 //Переключение окна авторизации
-function toggleModalAuth(){
+function toggleModalAuth() {
   modalAuth.classList.toggle("is-open")
 }
 
 //Действия при авторизованном пользователе
-function authorized(){
+function authorized() {
   //функция выхода
-  function logOut(){
+  function logOut() {
     login = null;
     localStorage.removeItem('gloDelivery'); //удаление логина из локального хранилища
     buttonAuth.style.display = ''; //показываем кнопку "Войти"
@@ -43,7 +55,7 @@ function authorized(){
     checkAuth();
   }
 
-  userName.textContent = login; //запоминаем логин
+  userName.textContent = login; //выводим логин
 
   buttonAuth.style.display = 'none'; //прячем кнопку "Войти"
   userName.style.display = 'inline'; //показываем имя пользователя
@@ -53,13 +65,13 @@ function authorized(){
 }
 
 //Действия при неавторизованном пользователе
-function notAuthorized(){
+function notAuthorized() {
   //авторизация
-  function logIn(event){
+  function logIn(event) {
     event.preventDefault(); //отключение действия по-умолчанию (в данном случае - для отключения перезапуска страницы и отправки данных на сервер)
     login = logInInput.value; //получение введеного логина
 
-    if(!login.trim()){
+    if(!login.trim()) {
       errorLogin.style.display = 'block'; //показ сообщения об ошибке ("Не введен логин")
       logInInput.style.backgroundColor = 'red'; //изменения цвета поля ввода логина
     } else {
@@ -86,8 +98,8 @@ function notAuthorized(){
 }
 
 //Функция проверки авторизации
-function checkAuth(){
-  if(login){
+function checkAuth() {
+  if(login) {
     authorized();
   } else {
     notAuthorized();
@@ -95,21 +107,29 @@ function checkAuth(){
 }
 
 //создание карточки ресторана
-function createCardRestaurant(){
+function createCardRestaurant({ image, kitchen, name, price,
+  products, stars, time_of_delivery: timeOfDelivery }) {
+
   const card = `
-          <a class="card card-restaurant">
-						<img src="img/tanuki/preview.jpg" alt="image" class="card-image"/>
+          <a class="card card-restaurant" data-products="${products}"
+            data-restaurant='{
+              "name": "${name}",
+              "stars": "${stars}",
+              "price": "${price}",
+              "kitchen": "${kitchen}"
+            }'>
+						<img src="${image}" alt="image" class="card-image"/>
 						<div class="card-text">
 							<div class="card-heading">
-								<h3 class="card-title">Тануки</h3>
-								<span class="card-tag tag">60 мин</span>
+								<h3 class="card-title">${name}</h3>
+								<span class="card-tag tag">${timeOfDelivery} мин</span>
 							</div>
 							<div class="card-info">
 								<div class="rating">
-									4.5
+									${stars}
 								</div>
-								<div class="price">От 1 200 ₽</div>
-								<div class="category">Суши, роллы</div>
+								<div class="price">От ${price} ₽</div>
+								<div class="category">${kitchen}</div>
 							</div>
 						</div>
           </a>
@@ -119,19 +139,18 @@ function createCardRestaurant(){
 }
 
 //добавление карточки товара
-function createCardGood(){
+function createCardGood({ description, id, image, name, price }) {
   const card = document.createElement('div');
   card.className = 'card';
 
   card.insertAdjacentHTML('beforeend',  `
-          <img src="img/pizza-plus/pizza-classic.jpg" alt="image" class="card-image"/>
+          <img src="${image}" alt="image" class="card-image"/>
 						<div class="card-text">
 							<div class="card-heading">
-								<h3 class="card-title card-title-reg">Пицца Классика</h3>
+								<h3 class="card-title card-title-reg">${name}</h3>
 							</div>
 							<div class="card-info">
-								<div class="ingredients">Соус томатный, сыр «Моцарелла», сыр «Пармезан», ветчина, салями,
-									грибы.
+								<div class="ingredients">${description}
 								</div>
 							</div>
 							<div class="card-buttons">
@@ -139,7 +158,7 @@ function createCardGood(){
 									<span class="button-card-text">В корзину</span>
 									<span class="button-cart-svg"></span>
 								</button>
-								<strong class="card-price-bold">510 ₽</strong>
+								<strong class="card-price-bold">${price} ₽</strong>
 							</div>
 						</div>
   `);
@@ -148,12 +167,12 @@ function createCardGood(){
 }
 
 //открытие меню ресторанов
-function openGoods(event){
+function openGoods(event) {
   const target = event.target;
-  const restaurant = target.closest('.card-restaurant');
+  const restaurant = target.closest('.card-restaurant'); //поиск родителя с классом '.card-restaurant'
 
-  if(restaurant){
-    if(!login){
+  if(restaurant) {
+    if(!login) {
       toggleModalAuth();
     } else {
       cardsMenu.textContent = '';
@@ -161,24 +180,56 @@ function openGoods(event){
       restaurants.classList.add('hide');
       menu.classList.remove('hide');
 
-      createCardGood();
+      let restInfo = JSON.parse(restaurant.dataset.restaurant); //получаем данные ресторана и преобразуем в json
+
+      getData(`./db/${restaurant.dataset.products}`).then(function(data){
+        data.forEach(createCardGood);
+      });
+
+      changeTitleRestaurant(restInfo);
     }
   }
 }
 
-cartButton.addEventListener("click", toggleModal); //событие кнопки "Корзина"
+//функция изменения заголовка ресторана
+function changeTitleRestaurant({ name, kitchen, price, stars }) {
+  const title = `
+           <h2 class="section-title restaurant-title">${name}</h2>
+					<div class="card-info">
+						<div class="rating">
+							${stars}
+						</div>
+						<div class="price">От ${price} ₽</div>
+						<div class="category">${kitchen}</div>
+					</div>
+        `
 
-close.addEventListener("click", toggleModal); //событие кнопки "Закрыть" окна корзины
+  const restaurantTitle = document.querySelector('.restaurant-title');
+  const titleArea = restaurantTitle.closest('.section-heading');
+  titleArea.innerHTML='';
+  titleArea.insertAdjacentHTML('beforeend', title);
+}
 
-cardsRestaurants.addEventListener('click', openGoods); //нажатие на карточку ресторана
+//функция запуска
+function init () {
+  getData('./db/partners.json').then(function(data) {
+    data.forEach(createCardRestaurant);
+  });
 
-//функция воврата на главный экран по нажатию лого
-logo.addEventListener('click', function(){
-  containerPromo.classList.remove('hide');
-  restaurants.classList.remove('hide');
-  menu.classList.add('hide');
-})
+  cartButton.addEventListener("click", toggleModal); //событие кнопки "Корзина"
 
-checkAuth()
-createCardRestaurant();
-createCardGood();
+  close.addEventListener("click", toggleModal); //событие кнопки "Закрыть" окна корзины
+
+  cardsRestaurants.addEventListener('click', openGoods); //нажатие на карточку ресторана
+
+  //функция воврата на главный экран по нажатию лого
+  logo.addEventListener('click', function() {
+    containerPromo.classList.remove('hide');
+    restaurants.classList.remove('hide');
+    menu.classList.add('hide');
+  })
+
+  checkAuth()
+}
+
+init();
