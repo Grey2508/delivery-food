@@ -17,8 +17,14 @@ const restaurants = document.querySelector('.restaurants'); //поле рест�
 const menu = document.querySelector('.menu'); //блок меню
 const logo = document.querySelector('.logo'); //лого
 const cardsMenu = document.querySelector('.cards-menu'); //меню ресторана
+const inputSearch = document.querySelector('.input-search'); //строка поиска
+const modalBody = document.querySelector('.modal-body'); //список товаров в корзине
+const modalPrice = document.querySelector('.modal-pricetag'); //общая стоимость корзины
+const buttonClearCart = document.querySelector('.clear-cart');
 
-let login = localStorage.getItem('gloDelivery'); //получение логина из локального хранилища
+let login = localStorage.getItem('deliveryLogin'); //получение логина из локального хранилища
+
+const cart = getCart();
 
 //получение данных 
 const getData = async function(url) {
@@ -47,10 +53,11 @@ function authorized() {
   //функция выхода
   function logOut() {
     login = null;
-    localStorage.removeItem('gloDelivery'); //удаление логина из локального хранилища
+    localStorage.removeItem('deliveryLogin'); //удаление логина из локального хранилища
     buttonAuth.style.display = ''; //показываем кнопку "Войти"
     userName.style.display = ''; //прячем имя пользователя
     buttonOut.style.display = ''; //прячем кнопку "Выход"
+    cartButton.style.display = ''; //прячем кнопку "Корзина"
     buttonOut.removeEventListener('click', logOut); //удаляем событие кнопки "Выход"
     checkAuth();
   }
@@ -59,7 +66,8 @@ function authorized() {
 
   buttonAuth.style.display = 'none'; //прячем кнопку "Войти"
   userName.style.display = 'inline'; //показываем имя пользователя
-  buttonOut.style.display = 'block'; //Показываем кнопку "Выход"
+  buttonOut.style.display = 'flex'; //показываем кнопку "Выход"
+  cartButton.style.display = 'flex'; //показываем кнопку "Корзина"
 
   buttonOut.addEventListener('click', logOut); //Назначение события кнопке "Выход"
 }
@@ -78,7 +86,7 @@ function notAuthorized() {
       errorLogin.style.display = 'none'; //скрытие сообщения об ошибке ("Не введен логин")
       logInInput.style.backgroundColor = 'white'; //изменение цвета поля ввода логина
 
-      localStorage.setItem('gloDelivery', login) //запись логина в локальное хранилище
+      localStorage.setItem('deliveryLogin', login) //запись логина в локальное хранилище
 
       toggleModalAuth(); //показ окна авторизации
       //удаление событий с кнопок
@@ -118,7 +126,7 @@ function createCardRestaurant({ image, kitchen, name, price,
               "price": "${price}",
               "kitchen": "${kitchen}"
             }'>
-						<img src="${image}" alt="image" class="card-image"/>
+						<img src="${image}" alt="${name}" class="card-image"/>
 						<div class="card-text">
 							<div class="card-heading">
 								<h3 class="card-title">${name}</h3>
@@ -144,7 +152,7 @@ function createCardGood({ description, id, image, name, price }) {
   card.className = 'card';
 
   card.insertAdjacentHTML('beforeend',  `
-          <img src="${image}" alt="image" class="card-image"/>
+          <img src="${image}" alt="${name}" class="card-image"/>
 						<div class="card-text">
 							<div class="card-heading">
 								<h3 class="card-title card-title-reg">${name}</h3>
@@ -154,11 +162,11 @@ function createCardGood({ description, id, image, name, price }) {
 								</div>
 							</div>
 							<div class="card-buttons">
-								<button class="button button-primary button-add-cart">
+								<button class="button button-primary button-add-cart" id="${id}">
 									<span class="button-card-text">В корзину</span>
 									<span class="button-cart-svg"></span>
 								</button>
-								<strong class="card-price-bold">${price} ₽</strong>
+								<strong class="card-price card-price-bold">${price} ₽</strong>
 							</div>
 						</div>
   `);
@@ -193,13 +201,18 @@ function openGoods(event) {
 
 //функция изменения заголовка ресторана
 function changeTitleRestaurant({ name, kitchen, price, stars }) {
+  let priceStr = '';
+  if(price){
+    priceStr = `<div class="price">От ${price} ₽</div>`;
+  }
+
   const title = `
            <h2 class="section-title restaurant-title">${name}</h2>
 					<div class="card-info">
 						<div class="rating">
 							${stars}
 						</div>
-						<div class="price">От ${price} ₽</div>
+						${priceStr}
 						<div class="category">${kitchen}</div>
 					</div>
         `
@@ -210,24 +223,214 @@ function changeTitleRestaurant({ name, kitchen, price, stars }) {
   titleArea.insertAdjacentHTML('beforeend', title);
 }
 
+//возврат на главное окно
+function returnMain() {
+  containerPromo.classList.remove('hide');
+  restaurants.classList.remove('hide');
+  menu.classList.add('hide');
+}
+
+//функция поиска
+function search(event){
+  if(event.keyCode===13) {
+    const target = event.target;
+    const value = target.value.toLowerCase().trim();
+
+    if(!value || value.length > 4){
+      target.style.backgroundColor = 'red';
+      setTimeout(function(){
+        target.style.backgroundColor = '';
+      }, 2000)
+
+      return;
+    }
+
+    target.value = '';
+
+    const goods = [];
+
+    getData('./db/partners.json')
+      .then(function(data){
+        const products = data.map(function(item){
+          return item.products;
+        });
+
+        products.forEach(function(product){
+          getData('./db/' + product)
+            .then(function(data){
+              goods.push(...data);
+
+              const serachGoods = goods.filter(function(item){
+                return item.name.toLowerCase().includes(value);
+              })
+              cardsMenu.textContent = '';
+              containerPromo.classList.add('hide');
+              restaurants.classList.add('hide');
+              menu.classList.remove('hide');
+
+              let restInfo = JSON.parse(`{
+                "name": "Результат поиска",
+                "stars": "",
+                "price": "",
+                "kitchen": ""
+              }`);
+
+              // goods.forEach(createCardGood);
+              changeTitleRestaurant(restInfo);
+
+              return serachGoods;
+            })
+            .then(function(data){
+              data.forEach(createCardGood)
+            });
+        });
+      });
+  };
+}
+
+//добавить в корзину
+function addToCart(event){
+  const target = event.target;
+
+  const buttonAddToCart = target.closest('.button-add-cart');
+
+  if(buttonAddToCart){
+    const card = target.closest('.card');
+    const title = card.querySelector('.card-title-reg').textContent;
+    const cost = card.querySelector('.card-price').textContent;
+    const id = buttonAddToCart.id;
+
+    const food = cart.find(function(item){
+      return item.id === id;
+    })
+
+    if(food) {
+      food.count++;
+    } else {
+      cart.push({
+        id,
+        title,
+        cost,
+        count: 1
+      });
+    }
+
+    //запись в localStorage
+    setCart();
+  }
+}
+
+//формирование корзины
+function renderCart(){
+  modalBody.textContent = '';
+
+  cart.forEach(function({ id, title, cost, count }){
+    const itemCart = `
+      <div class="food-row">
+        <span class="food-name">${title}</span>
+        <strong class="food-price">${cost}</strong>
+        <div class="food-counter">
+          <button class="counter-button counter-minus" data-id="${id}">-</button>
+          <span class="counter">${count}</span>
+          <button class="counter-button counter-plus" data-id="${id}">+</button>
+        </div>
+      </div>
+    `;
+
+    modalBody.insertAdjacentHTML('beforeend', itemCart);
+
+    
+  })
+
+  const totalPrice = cart.reduce(function(result, item){
+    return result + (parseFloat(item.cost) * item.count);
+  }, 0);
+
+  modalPrice.textContent = totalPrice + ' ₽';
+
+}
+
+//изменение количества продуктов в корзине
+function changeCount(event) {
+  const target = event.target;
+
+  if (target.classList.contains('counter-button')) {
+    const food = cart.find(function(item){
+      return item.id === target.dataset.id;
+    });
+
+    if(target.classList.contains('counter-minus')) {
+      food.count--; 
+
+      if (food.count === 0) {
+        cart.splice(cart.indexOf(food), 1);
+      }
+    }
+    if(target.classList.contains('counter-plus')) food.count++; 
+
+    renderCart();
+    setCart();
+  }
+}
+
+//получение корзины из localStorage
+function getCart(){
+  const cartLS = localStorage.getItem('deliveryCart');
+  const cartJsonGet = JSON.parse(cartLS);
+
+  if(!cartJsonGet){
+    return [];
+  } else {
+    return cartJsonGet;
+  }
+
+}
+
+//сохранение корзины в localStorage
+function setCart(){
+  const cartJsonSet = cart.reduce(function(result, item){
+    return result + '\n {\n  "id": "' + item.id + '",\n  "title": "' + item.title + '",\n  "cost": "' + item.cost + '",\n  "count": "' + item.count + '"\n },';
+  }, '');
+
+  localStorage.setItem('deliveryCart', '[' + cartJsonSet.replace(/\,$/, '') + '\n]');
+}
+
 //функция запуска
 function init () {
+  //получение данных о ресторанах
   getData('./db/partners.json').then(function(data) {
     data.forEach(createCardRestaurant);
   });
 
-  cartButton.addEventListener("click", toggleModal); //событие кнопки "Корзина"
-
-  close.addEventListener("click", toggleModal); //событие кнопки "Закрыть" окна корзины
-
-  cardsRestaurants.addEventListener('click', openGoods); //нажатие на карточку ресторана
-
-  //функция воврата на главный экран по нажатию лого
-  logo.addEventListener('click', function() {
-    containerPromo.classList.remove('hide');
-    restaurants.classList.remove('hide');
-    menu.classList.add('hide');
+  //событие кнопки "Корзина"
+  cartButton.addEventListener("click", function(){
+    renderCart();
+    toggleModal();
+  });
+  
+  //кнопка "Отмена" в корзине
+  buttonClearCart.addEventListener('click', function() {
+    cart.length = 0;
+    renderCart();
+    localStorage.removeItem('deliveryCart');
   })
+  //событие для изменения количества для товаров в корзине
+  modalBody.addEventListener('click', changeCount);
+
+  //событие для кнопки "В корзину"
+  cardsMenu.addEventListener('click', addToCart);
+
+  //событие кнопки "Закрыть" окна корзины
+  close.addEventListener("click", toggleModal);
+
+  //нажатие на карточку ресторана
+  cardsRestaurants.addEventListener('click', openGoods);
+
+  //функция возврата на главный экран по нажатию лого
+  logo.addEventListener('click', returnMain);
+
+  //перехват события нажатия кнопки в поле поиска
+  inputSearch.addEventListener('keydown', search);
 
   checkAuth()
 }
